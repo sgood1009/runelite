@@ -265,41 +265,35 @@ public class OverlayRenderer extends MouseAdapter implements KeyListener
 			}
 			else
 			{
-				final Rectangle bounds = overlay.getBounds();
-				final Dimension dimension = bounds.getSize();
-				final Point preferredLocation = overlay.getPreferredLocation();
-				Point location;
+				final Point location = overlay.getBounds().getLocation();
+				final Dimension dimension = overlay.getBounds().getSize();
 
 				// If the final position is not modified, layout it
-				if (overlayPosition != OverlayPosition.DETACHED && (preferredLocation == null || overlay.getPreferredPosition() != null))
+				if (overlayPosition != OverlayPosition.DETACHED && (overlay.getPreferredLocation() == null || overlay.getPreferredPosition() != null))
 				{
 					final Rectangle snapCorner = snapCorners.forPosition(overlayPosition);
-					final Point translation = OverlayUtil.transformPosition(overlayPosition, dimension); // offset from corner
-					// Target x/y to draw the overlay
-					int destX = (int) snapCorner.getX() + translation.x;
-					int destY = (int) snapCorner.getY() + translation.y;
-					// Clamp the target position to ensure it is on screen or within parent bounds
-					location = clampOverlayLocation(destX, destY, dimension.width, dimension.height, overlay);
-					// Diff final position to target position in order to add it to the snap corner padding. The
-					// overlay effectively takes up the difference of (clamped location - target location) in
-					// addition to its normal dimensions.
-					int dX = location.x - destX;
-					int dY = location.y - destY;
-					final Point padding = OverlayUtil.padPosition(overlayPosition, dimension, PADDING); // overlay size + fixed padding
-					// translate corner for padding and any difference due to the position clamping
-					snapCorner.translate(padding.x + dX, padding.y + dY);
+					final Point translation = OverlayUtil.transformPosition(overlayPosition, dimension);
+					location.setLocation(snapCorner.getX() + translation.x, snapCorner.getY() + translation.y);
+					final Point padding = OverlayUtil.padPosition(overlayPosition, dimension, PADDING);
+					snapCorner.translate(padding.x, padding.y);
 				}
 				else
 				{
-					location = preferredLocation != null ? preferredLocation : bounds.getLocation();
+					final Point preferredLocation = overlay.getPreferredLocation();
 
-					// Clamp the overlay position to ensure it is on screen or within parent bounds
-					location = clampOverlayLocation(location.x, location.y, dimension.width, dimension.height, overlay);
+					if (preferredLocation != null)
+					{
+						location.setLocation(preferredLocation);
+					}
+
+					final Dimension realDimensions = client.getRealDimensions();
+					location.x = Ints.constrainToRange(location.x, 0, Math.max(0, realDimensions.width - dimension.width));
+					location.y = Ints.constrainToRange(location.y, 0, Math.max(0, realDimensions.height - dimension.height));
 				}
 
 				if (overlay.getPreferredSize() != null)
 				{
-					bounds.setSize(overlay.getPreferredSize());
+					overlay.getBounds().setSize(overlay.getPreferredSize());
 				}
 
 				safeRender(client, overlay, layer, graphics, location);
@@ -311,6 +305,8 @@ public class OverlayRenderer extends MouseAdapter implements KeyListener
 				graphics.setPaint(paint);
 				graphics.setRenderingHints(renderingHints);
 				graphics.setBackground(background);
+
+				final Rectangle bounds = overlay.getBounds();
 
 				if (!bounds.isEmpty())
 				{
@@ -606,14 +602,12 @@ public class OverlayRenderer extends MouseAdapter implements KeyListener
 		}
 		else if (inOverlayDraggingMode)
 		{
-			Point overlayPosition = new Point(p);
-			overlayPosition.translate(-overlayOffset.x, -overlayOffset.y); // adjust by mouse offset to get overlay position
-
-			// Clamp drag to parent component
-			final Rectangle overlayBounds = currentManagedOverlay.getBounds();
-			overlayPosition = clampOverlayLocation(overlayPosition.x, overlayPosition.y, overlayBounds.width, overlayBounds.height, currentManagedOverlay);
+			final Dimension realDimension = client.getRealDimensions();
+			p.translate(-overlayOffset.x, -overlayOffset.y);
+			p.x = Ints.constrainToRange(p.x, 0, Math.max(0, realDimension.width - currentManagedOverlay.getBounds().width));
+			p.y = Ints.constrainToRange(p.y, 0, Math.max(0, realDimension.height - currentManagedOverlay.getBounds().height));
 			currentManagedOverlay.setPreferredPosition(null);
-			currentManagedOverlay.setPreferredLocation(overlayPosition);
+			currentManagedOverlay.setPreferredLocation(p);
 		}
 		else
 		{
@@ -921,34 +915,5 @@ public class OverlayRenderer extends MouseAdapter implements KeyListener
 		}
 
 		return entries;
-	}
-
-	/**
-	 * Adjust the given overlay position to be within its parent's bounds.
-	 *
-	 * @param overlayX
-	 * @param overlayY
-	 * @param overlayWidth
-	 * @param overlayHeight
-	 * @param overlay       the overlay
-	 * @return the clamped position
-	 */
-	private Point clampOverlayLocation(int overlayX, int overlayY, int overlayWidth, int overlayHeight, Overlay overlay)
-	{
-		Rectangle parentBounds = overlay.getParentBounds();
-		if (parentBounds == null || parentBounds.isEmpty())
-		{
-			// If no bounds are set, use the full client bounds
-			Dimension dim = client.getRealDimensions();
-			parentBounds = new Rectangle(0, 0, dim.width, dim.height);
-		}
-
-		// Constrain overlay position to be within the parent bounds
-		return new Point(
-			Ints.constrainToRange(overlayX, parentBounds.x,
-				Math.max(parentBounds.x, parentBounds.width - overlayWidth)),
-			Ints.constrainToRange(overlayY, parentBounds.y,
-				Math.max(parentBounds.y, parentBounds.height - overlayHeight))
-		);
 	}
 }
